@@ -22,7 +22,19 @@ import sys
 import requests
 from bs4 import BeautifulSoup
 
-def get_all(flag_url_base: str) -> list[dict]:
+WIKIPEDIA_BASE_URL = "https://en.wikipedia.org"
+
+def get_soup_from_wiki(wiki_url: str) -> BeautifulSoup:
+  """Get BeautifulSoup object from Wikipedia page"""
+
+  response = requests.get(wiki_url)
+  # strip newlines (or else they will show up in the soup)
+  stripped_content = ''.join(response.text.splitlines())
+  soup = BeautifulSoup(stripped_content, 'html.parser') # create soup
+
+  return soup
+
+def get_all(flag_url_base: str) -> list[dict[str, str]]:
   """Get all ISO-3166 alpha-2 codes
   
   This function retrieves the ISO-3166 list of countries and
@@ -30,18 +42,17 @@ def get_all(flag_url_base: str) -> list[dict]:
   containing information about each of them.
   """
 
-  url = "https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2"
+  iso3166_url = WIKIPEDIA_BASE_URL + "/wiki/ISO_3166-1_alpha-2"
 
-  response = requests.get(url);
-  stripped_content = ''.join(response.text.splitlines()) # strip newlines from Wikipedia HTML
-
-  soup = BeautifulSoup(stripped_content, 'html.parser')
+  soup = get_soup_from_wiki(iso3166_url)
 
   countries_arr = [] # JSON array
 
   table_body = soup.find("table", class_="wikitable sortable sort-under").contents[0] # table of ISO-3166 abbreviations
+  i = 0
   for row in table_body.children:
     json_obj = {}
+    # attempt to get alpha-2 code
     alpha2 = row.contents[0].attrs.get('id')
     if alpha2 == None:
       continue # skip header row
