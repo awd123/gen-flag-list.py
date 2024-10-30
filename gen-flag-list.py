@@ -34,6 +34,50 @@ def get_soup_from_wiki(wiki_url: str) -> BeautifulSoup:
 
   return soup
 
+def get_detailed_country_info(wiki_url: str, json_obj: dict[str, str]):
+  """Retrieve further info about a country
+  
+  This function takes a link to the Wikipedia page of a specific
+  ISO-3166 political entity, along with a preexisting dict representing
+  the political entity. The function adds further information to the
+  dict."""
+
+  # this can be slow, want to indicate progress
+  print(f'Getting detailed info for {json_obj["name"]}...', file=sys.stderr)
+
+  soup = get_soup_from_wiki(wiki_url)
+  # try fetching info table for country
+  info_table = soup.table
+  if info_table is None or "ib-country" not in info_table.attrs.get("class"):
+    # dependent territories use the ib-pol-div class instead of ib-country
+    json_obj["sovereign"] = False
+    
+    return
+    # TODO: implement scraping for dependent territories
+
+  json_obj["sovereign"] = True
+
+  table_body = info_table.tbody
+  # attempt to scrape full (official) country name
+  official_name = table_body.find("div", attrs={"class":"country-name"}).string
+  json_obj["fullName"] = official_name
+
+  capital = None
+  official_language = None
+  for label in table_body.find_all(attrs={"class":"infobox-label"}):
+    # attempt to scrape capital
+    if "Capital" in label.stripped_strings:
+      capital = label.next_sibling.a.string
+      continue
+
+    # attempt to scrape official language (only supports one at the moment)
+    if str(label.string) == "Official\u00a0languages": # this is a non-breaking space!
+      official_language = label.next_sibling.a.string
+      continue
+    
+  json_obj["capital"] = capital
+  json_obj["officialLanguage"] = official_language
+
 def get_all(flag_url_base: str) -> list[dict[str, str]]:
   """Get all ISO-3166 alpha-2 codes
   
@@ -48,19 +92,26 @@ def get_all(flag_url_base: str) -> list[dict[str, str]]:
 
   countries_arr = [] # JSON array
 
-  table_body = soup.find("table", class_="wikitable sortable sort-under").contents[0] # table of ISO-3166 abbreviations
+  table_body = soup.find("table", class_="wikitable sortable sort-under").tbody # table of ISO-3166 abbreviations
   i = 0
   for row in table_body.children:
     json_obj = {}
+
     # attempt to get alpha-2 code
     alpha2 = row.contents[0].attrs.get('id')
     if alpha2 == None:
       continue # skip header row
+
     name = row.contents[1].a.string
+    # get link to the country's Wikipedia page
+    wiki_url = WIKIPEDIA_BASE_URL + row.contents[1].a.attrs.get('href')
+
     json_obj['alpha2'] = alpha2
     json_obj['name'] = name
     if (flag_url_base):
       json_obj['flagUrl'] = f"{flag_url_base}{alpha2}.png"
+
+    get_detailed_country_info(wiki_url, json_obj)
 
     countries_arr.append(json_obj)
 
@@ -77,6 +128,7 @@ if len(sys.argv) == 3:
   flag_url_base = sys.argv[2]
 
 countries_arr = get_all(flag_url_base)
+
 with open(sys.argv[1], 'w', encoding='utf-8') as outf:
   json.dump(countries_arr, outf, indent=2)
 
