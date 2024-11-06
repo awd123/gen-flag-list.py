@@ -46,20 +46,34 @@ def get_detailed_country_info(wiki_url: str, json_obj: dict[str, str]):
   print(f'Getting detailed info for {json_obj["name"]}...', file=sys.stderr)
 
   soup = get_soup_from_wiki(wiki_url)
+  # get common name of country
+  json_obj["name"] = soup.h1.span.string
+
   # try fetching info table for country
-  info_table = soup.table
-  if info_table is None or "ib-country" not in info_table.attrs.get("class"):
+  info_table = soup.find("table", attrs={"class":"ib-country"})
+  json_obj["sovereign"] = True
+
+  if info_table is None:
     # dependent territories use the ib-pol-div class instead of ib-country
     json_obj["sovereign"] = False
     
-    return
-    # TODO: implement scraping for dependent territories
+    info_table = soup.find("table", attrs={"class":"ib-pol-div"})
+    if info_table is None:
+      # cannot scrape info
+      json_obj["fullName"] = json_obj["name"]
+      json_obj["capital"] = None
+      json_obj["officialLanguage"] = None
+      return
 
-  json_obj["sovereign"] = True
 
   table_body = info_table.tbody
   # attempt to scrape full (official) country name
-  official_name = table_body.find("div", attrs={"class":"country-name"}).string
+  official_name = None
+  try:
+    official_name = table_body.find("div", attrs={"class":"country-name"}).string
+  except AttributeError:
+    official_name = json_obj["name"]
+
   json_obj["fullName"] = official_name
 
   capital = None
